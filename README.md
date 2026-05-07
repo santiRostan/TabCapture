@@ -81,3 +81,5 @@ Example Sky Guitar run:
   --start 195 \
   --output tablatura.pdf
 ```
+
+See the folder `examples` for resulting PDFs
