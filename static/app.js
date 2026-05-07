@@ -11,7 +11,8 @@ const els = {
   importForm: document.getElementById("importForm"),
   importStatus: document.getElementById("importStatus"),
   workspace: document.getElementById("workspace"),
-  previewTime: document.getElementById("previewTime"),
+  youtubeUrl: document.getElementById("youtubeUrl"),
+  localFile: document.getElementById("localFile"),
   refreshPreview: document.getElementById("refreshPreview"),
   previewFrame: document.getElementById("previewFrame"),
   previewImage: document.getElementById("previewImage"),
@@ -34,9 +35,12 @@ const els = {
   saveCleaned: document.getElementById("saveCleaned"),
   generateButton: document.getElementById("generateButton"),
   extractStatus: document.getElementById("extractStatus"),
+  resultPanel: document.getElementById("resultPanel"),
+  resultTitle: document.getElementById("resultTitle"),
+  resultMeta: document.getElementById("resultMeta"),
+  resultPdfLink: document.getElementById("resultPdfLink"),
   jobPanel: document.getElementById("jobPanel"),
   jobPhase: document.getElementById("jobPhase"),
-  pdfLink: document.getElementById("pdfLink"),
   statChecked: document.getElementById("statChecked"),
   statSkipped: document.getElementById("statSkipped"),
   statKept: document.getElementById("statKept"),
@@ -117,9 +121,12 @@ function applySource(source) {
 
   if (state.duration) {
     const max = Math.floor(state.duration);
-    els.previewTime.max = String(max);
+    const midpoint = Math.floor(max / 2);
     els.startInput.max = String(max);
     els.endInput.max = String(max);
+    els.startInput.value = String(midpoint);
+  } else {
+    els.startInput.value = "0";
   }
 
   updateCropUi();
@@ -143,6 +150,10 @@ async function loadPreview(timeValue) {
   } finally {
     els.refreshPreview.disabled = false;
   }
+}
+
+function loadStartPreview() {
+  return loadPreview(numericValue(els.startInput, 0));
 }
 
 function numericValue(input, fallback = null) {
@@ -183,14 +194,20 @@ function renderJob(job) {
   els.logBox.scrollTop = els.logBox.scrollHeight;
 
   if (job.status === "done") {
-    els.pdfLink.href = job.pdf_url;
-    els.pdfLink.classList.remove("hidden");
+    const kept = job.stats?.captures_kept ?? 0;
+    const fileName = job.pdf_name || "tablatura.pdf";
+    els.resultTitle.textContent = "PDF ready";
+    els.resultMeta.textContent = `${fileName} is ready with ${kept} captured tab image${kept === 1 ? "" : "s"}.`;
+    els.resultPdfLink.href = job.pdf_url;
+    els.resultPanel.classList.remove("hidden");
     setStatus(els.extractStatus, "PDF ready.", "success");
     clearInterval(state.pollTimer);
     state.pollTimer = null;
     els.generateButton.disabled = false;
+    els.resultPanel.scrollIntoView({ behavior: "smooth", block: "center" });
+    els.resultPanel.focus({ preventScroll: true });
   } else if (job.status === "error") {
-    els.pdfLink.classList.add("hidden");
+    els.resultPanel.classList.add("hidden");
     setStatus(els.extractStatus, job.error || "Extraction failed.", "error");
     clearInterval(state.pollTimer);
     state.pollTimer = null;
@@ -204,11 +221,13 @@ async function pollJob(jobId) {
   try {
     const job = await fetchJson(`/api/jobs/${jobId}`);
     renderJob(job);
+    return job;
   } catch (error) {
     setStatus(els.extractStatus, error.message, "error");
     clearInterval(state.pollTimer);
     state.pollTimer = null;
     els.generateButton.disabled = false;
+    return null;
   }
 }
 
@@ -223,19 +242,29 @@ els.importForm.addEventListener("submit", async (event) => {
     });
     applySource(source);
     setStatus(els.importStatus, "Imported.", "success");
-    await loadPreview(Number(els.previewTime.value || 0));
+    await loadStartPreview();
   } catch (error) {
     setStatus(els.importStatus, error.message, "error");
   }
 });
 
 els.refreshPreview.addEventListener("click", () => {
-  loadPreview(Number(els.previewTime.value || 0));
+  loadStartPreview();
 });
 
 els.startInput.addEventListener("change", () => {
-  if (els.previewTime.value === "" || Number(els.previewTime.value) === 0) {
-    els.previewTime.value = els.startInput.value || "0";
+  loadStartPreview();
+});
+
+els.youtubeUrl.addEventListener("input", () => {
+  if (els.youtubeUrl.value.trim()) {
+    els.localFile.value = "";
+  }
+});
+
+els.localFile.addEventListener("change", () => {
+  if (els.localFile.files.length > 0) {
+    els.youtubeUrl.value = "";
   }
 });
 
@@ -252,7 +281,7 @@ els.generateButton.addEventListener("click", async () => {
   }
 
   els.generateButton.disabled = true;
-  els.pdfLink.classList.add("hidden");
+  els.resultPanel.classList.add("hidden");
   setStatus(els.extractStatus, "Starting...");
   try {
     const data = await fetchJson("/api/extract", {
@@ -260,8 +289,10 @@ els.generateButton.addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildExtractPayload()),
     });
-    await pollJob(data.job_id);
-    state.pollTimer = setInterval(() => pollJob(data.job_id), 1000);
+    const firstJob = await pollJob(data.job_id);
+    if (firstJob && !["done", "error"].includes(firstJob.status)) {
+      state.pollTimer = setInterval(() => pollJob(data.job_id), 1000);
+    }
   } catch (error) {
     setStatus(els.extractStatus, error.message, "error");
     els.generateButton.disabled = false;

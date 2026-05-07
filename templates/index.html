@@ -17,16 +17,23 @@
       </header>
 
       <section class="panel import-panel" id="importPanel">
-        <form id="importForm" class="import-grid">
-          <label class="field field-wide">
-            <span>YouTube URL</span>
-            <input id="youtubeUrl" name="url" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
-          </label>
-          <label class="field file-field">
-            <span>Local video</span>
-            <input id="localFile" name="file" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska">
-          </label>
-          <button class="primary-button" type="submit">Import</button>
+        <form id="importForm" class="import-form">
+          <div class="import-primary-row">
+            <label class="field">
+              <span>Paste a YouTube URL</span>
+              <input id="youtubeUrl" name="url" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+            </label>
+            <button class="primary-button import-button" type="submit">Import video</button>
+          </div>
+
+          <div class="import-divider"><span>or</span></div>
+
+          <div class="import-secondary-row">
+            <label class="field file-field">
+              <span>Choose local file</span>
+              <input id="localFile" name="file" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska">
+            </label>
+          </div>
         </form>
         <p class="status-line" id="importStatus"></p>
       </section>
@@ -34,11 +41,11 @@
       <section class="workspace hidden" id="workspace">
         <section class="panel preview-panel">
           <div class="preview-toolbar">
-            <label class="field compact">
-              <span>Preview second</span>
-              <input id="previewTime" type="number" min="0" step="1" value="0">
-            </label>
-            <button class="secondary-button" id="refreshPreview" type="button">Refresh frame</button>
+            <div class="preview-copy">
+              <strong>Crop preview</strong>
+              <span>Shows the frame at Start; new imports begin near the middle to skip black intro frames.</span>
+            </div>
+            <button class="secondary-button" id="refreshPreview" type="button">Update preview</button>
             <div class="crop-readout">
               <span id="cropReadout">Crop 0% - 46%</span>
             </div>
@@ -115,10 +122,17 @@
             <span class="status-line" id="extractStatus"></span>
           </div>
 
+          <section class="result-panel hidden" id="resultPanel" tabindex="-1">
+            <div>
+              <strong id="resultTitle">PDF ready</strong>
+              <p id="resultMeta">Your tablature PDF is ready to review.</p>
+            </div>
+            <a id="resultPdfLink" class="primary-button result-button" href="#" target="_blank" rel="noreferrer">Open PDF</a>
+          </section>
+
           <section class="job-panel hidden" id="jobPanel">
             <div class="job-header">
               <strong id="jobPhase">Queued</strong>
-              <a id="pdfLink" class="secondary-button hidden" href="#" target="_blank" rel="noreferrer">Open PDF</a>
             </div>
             <div class="stats-grid" id="statsGrid">
               <span>Checked <strong id="statChecked">0</strong></span>
