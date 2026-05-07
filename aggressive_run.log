@@ -1,0 +1,22 @@
+Video fuente: /Users/srostan/Desktop/pdf-extractor/video_cache/video.mp4
+Duración detectada: 480.55s
+Procesando desde 195.00s hasta 480.55s
+Capturando cada 2.00s
+diff_threshold=0.0100, compare_window=1, band_half_width=90
+[001] guardada t=195.00s | diff=inicial | banda x=311, peak=382.9
+[002] guardada t=217.00s | diff=0.0666 | banda x=175, peak=395.4
+[003] guardada t=241.00s | diff=0.0616 | banda x=173, peak=386.5
+[004] guardada t=265.00s | diff=0.0557 | banda x=158, peak=371.0
+[005] guardada t=289.00s | diff=0.0642 | banda x=172, peak=380.1
+[006] guardada t=313.00s | diff=0.0677 | banda x=188, peak=380.6
+[007] guardada t=337.00s | diff=0.0659 | banda x=153, peak=371.0
+[008] guardada t=361.00s | diff=0.0704 | banda x=171, peak=404.3
+[009] guardada t=385.00s | diff=0.0848 | banda x=192, peak=381.6
+[010] guardada t=403.00s | diff=0.0919 | banda x=170, peak=383.1
+[011] guardada t=421.00s | diff=0.0782 | banda x=176, peak=398.7
+[012] guardada t=445.00s | diff=0.0720 | banda x=172, peak=383.6
+Frames chequeados: 143
+Duplicados saltados: 129
+Capturas finales: 12
+Armando PDF...
+PDF generado en: /Users/srostan/Desktop/pdf-extractor/tablatura_aggressive.pdf

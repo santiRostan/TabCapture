@@ -1,0 +1,23 @@
+Video fuente: /Users/srostan/Desktop/pdf-extractor/video_cache/video.mp4
+Duración detectada: 480.55s
+Procesando desde 195.00s hasta 480.55s
+Capturando cada 2.00s
+diff_threshold=0.0030, compare_window=1, band_half_width=70
+[001] guardada t=195.00s | diff=inicial | banda x=311, peak=404.9
+[002] guardada t=197.00s | diff=0.0031 | banda x=441, peak=385.5
+[003] guardada t=217.00s | diff=0.0631 | banda x=175, peak=407.4
+[004] guardada t=241.00s | diff=0.0587 | banda x=173, peak=398.5
+[005] guardada t=265.00s | diff=0.0531 | banda x=158, peak=383.0
+[006] guardada t=289.00s | diff=0.0608 | banda x=173, peak=392.1
+[007] guardada t=313.00s | diff=0.0647 | banda x=188, peak=392.6
+[008] guardada t=337.00s | diff=0.0624 | banda x=156, peak=383.0
+[009] guardada t=361.00s | diff=0.0665 | banda x=171, peak=416.3
+[010] guardada t=385.00s | diff=0.0803 | banda x=192, peak=393.6
+[011] guardada t=403.00s | diff=0.0869 | banda x=170, peak=395.1
+[012] guardada t=421.00s | diff=0.0747 | banda x=176, peak=410.7
+[013] guardada t=445.00s | diff=0.0685 | banda x=172, peak=394.6
+Frames chequeados: 143
+Duplicados saltados: 128
+Capturas finales: 13
+Armando PDF...
+PDF generado en: /Users/srostan/Desktop/pdf-extractor/tablatura_conservative.pdf

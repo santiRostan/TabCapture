@@ -1,0 +1,23 @@
+Video fuente: /Users/srostan/Desktop/pdf-extractor/video_cache/video.mp4
+Duración detectada: 480.55s
+Procesando desde 195.00s hasta 480.55s
+Capturando cada 2.00s
+diff_threshold=0.0060, compare_window=1, band_half_width=80
+[001] guardada t=195.00s | diff=inicial | banda x=311, peak=404.9
+[002] guardada t=217.00s | diff=0.0642 | banda x=175, peak=407.4
+[003] guardada t=241.00s | diff=0.0589 | banda x=173, peak=398.5
+[004] guardada t=265.00s | diff=0.0534 | banda x=158, peak=383.0
+[005] guardada t=289.00s | diff=0.0612 | banda x=173, peak=392.1
+[006] guardada t=313.00s | diff=0.0650 | banda x=188, peak=392.6
+[007] guardada t=337.00s | diff=0.0627 | banda x=156, peak=383.0
+[008] guardada t=361.00s | diff=0.0669 | banda x=171, peak=416.3
+[009] guardada t=385.00s | diff=0.0808 | banda x=192, peak=393.6
+[010] guardada t=403.00s | diff=0.0874 | banda x=170, peak=395.1
+[011] guardada t=421.00s | diff=0.0747 | banda x=176, peak=410.7
+[012] guardada t=445.00s | diff=0.0689 | banda x=172, peak=394.6
+Frames chequeados: 143
+Duplicados saltados: 129
+Capturas finales: 12
+Armando PDF...
+PDF generado en: /Users/srostan/Desktop/pdf-extractor/tablatura_balanced.pdf
+Imágenes de comparación guardadas en: /Users/srostan/Desktop/pdf-extractor/debug_comparacion_tablatura
