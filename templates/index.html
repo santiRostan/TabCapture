@@ -16,14 +16,14 @@
         <a class="ghost-link" href="/api/jobs" aria-hidden="true" tabindex="-1"></a>
       </header>
 
-      <section class="panel import-panel" id="importPanel">
+      <section class="panel import-panel" id="importPanel" aria-busy="false">
         <form id="importForm" class="import-form">
           <div class="import-primary-row">
             <label class="field">
               <span>Paste a YouTube URL</span>
               <input id="youtubeUrl" name="url" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
             </label>
-            <button class="primary-button import-button" type="submit">Import video</button>
+            <button class="primary-button import-button" id="importButton" type="submit">Import video</button>
           </div>
 
           <div class="import-divider"><span>or</span></div>
@@ -39,7 +39,7 @@
       </section>
 
       <section class="workspace hidden" id="workspace">
-        <section class="panel preview-panel">
+        <section class="panel preview-panel" id="previewPanel" aria-busy="false">
           <div class="preview-toolbar">
             <div class="preview-copy">
               <strong>Crop preview</strong>
@@ -51,7 +51,7 @@
             </div>
           </div>
 
-          <div class="preview-frame" id="previewFrame">
+          <div class="preview-frame" id="previewFrame" aria-busy="false">
             <img id="previewImage" alt="Video preview">
             <div class="crop-overlay" id="cropOverlay">
               <div class="shade shade-top" id="shadeTop"></div>
@@ -59,6 +59,10 @@
               <div class="crop-window" id="cropWindow"></div>
               <button class="crop-handle crop-top" id="cropTop" type="button" aria-label="Move crop top"></button>
               <button class="crop-handle crop-bottom" id="cropBottom" type="button" aria-label="Move crop bottom"></button>
+            </div>
+            <div class="preview-loading-overlay hidden" id="previewLoadingOverlay" role="status" aria-live="polite">
+              <span class="spinner" aria-hidden="true"></span>
+              <span id="previewStatus">Updating preview...</span>
             </div>
           </div>
         </section>

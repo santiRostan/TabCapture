@@ -5,17 +5,28 @@ const state = {
   cropEnd: 0.46,
   activeHandle: null,
   pollTimer: null,
+  importing: false,
+  previewLoading: false,
+  previewRequestId: 0,
+  previewTime: null,
+  pendingPreviewTime: null,
+  pendingPreviewSourceId: null,
 };
 
 const els = {
+  importPanel: document.getElementById("importPanel"),
   importForm: document.getElementById("importForm"),
+  importButton: document.getElementById("importButton"),
   importStatus: document.getElementById("importStatus"),
   workspace: document.getElementById("workspace"),
   youtubeUrl: document.getElementById("youtubeUrl"),
   localFile: document.getElementById("localFile"),
+  previewPanel: document.getElementById("previewPanel"),
   refreshPreview: document.getElementById("refreshPreview"),
   previewFrame: document.getElementById("previewFrame"),
   previewImage: document.getElementById("previewImage"),
+  previewLoadingOverlay: document.getElementById("previewLoadingOverlay"),
+  previewStatus: document.getElementById("previewStatus"),
   shadeTop: document.getElementById("shadeTop"),
   shadeBottom: document.getElementById("shadeBottom"),
   cropWindow: document.getElementById("cropWindow"),
@@ -65,6 +76,73 @@ function setStatus(element, message, mode = "") {
   element.dataset.mode = mode;
 }
 
+function setControlBusy(controls, busy) {
+  controls.forEach((control) => {
+    control.disabled = busy;
+  });
+}
+
+function setImportLoading(isLoading) {
+  state.importing = isLoading;
+  els.importPanel.setAttribute("aria-busy", String(isLoading));
+  els.importPanel.classList.toggle("is-loading", isLoading);
+  els.importButton.textContent = isLoading ? "Importing..." : "Import video";
+  setControlBusy([els.importButton, els.youtubeUrl, els.localFile], isLoading);
+}
+
+function setPreviewLoading(isLoading, message = "Updating preview...", mode = "") {
+  state.previewLoading = isLoading;
+  els.previewPanel.setAttribute("aria-busy", String(isLoading));
+  els.previewFrame.setAttribute("aria-busy", String(isLoading));
+  els.previewFrame.classList.toggle("is-loading", isLoading);
+  els.refreshPreview.disabled = isLoading;
+  els.previewStatus.textContent = message;
+  els.previewStatus.dataset.mode = mode;
+  els.previewLoadingOverlay.classList.toggle("hidden", !isLoading && !message);
+  els.previewLoadingOverlay.classList.toggle("is-error", mode === "error");
+  els.previewLoadingOverlay.classList.remove("is-stale");
+}
+
+function clearPreviewStatus() {
+  setPreviewLoading(false, "");
+}
+
+function setPreviewNotice(message, mode = "") {
+  state.previewLoading = false;
+  els.previewPanel.setAttribute("aria-busy", "false");
+  els.previewFrame.setAttribute("aria-busy", "false");
+  els.previewFrame.classList.remove("is-loading");
+  els.refreshPreview.disabled = false;
+  els.previewStatus.textContent = message;
+  els.previewStatus.dataset.mode = mode;
+  els.previewLoadingOverlay.classList.toggle("hidden", !message);
+  els.previewLoadingOverlay.classList.toggle("is-error", mode === "error");
+  els.previewLoadingOverlay.classList.toggle("is-stale", mode === "stale");
+}
+
+function formatSeconds(value) {
+  if (!Number.isFinite(value)) return "0s";
+  const rounded = Math.max(0, Math.round(value));
+  const minutes = Math.floor(rounded / 60);
+  const seconds = rounded % 60;
+  if (minutes === 0) return `${seconds}s`;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function currentStartTime() {
+  const value = numericValue(els.startInput, 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function markPreviewStale() {
+  if (state.previewTime === null || state.previewLoading) return;
+  if (currentStartTime() === state.previewTime) {
+    clearPreviewStatus();
+    return;
+  }
+  setPreviewNotice(`Preview is still showing ${formatSeconds(state.previewTime)}`, "stale");
+}
+
 function formatPercent(value) {
   return `${Math.round(value * 100)}%`;
 }
@@ -112,6 +190,12 @@ function endDrag() {
 }
 
 function applySource(source) {
+  state.previewRequestId += 1;
+  state.previewTime = null;
+  state.pendingPreviewTime = null;
+  state.pendingPreviewSourceId = null;
+  clearPreviewStatus();
+
   state.sourceId = source.id;
   state.duration = source.duration || null;
   const metadata = source.metadata || {};
@@ -135,20 +219,48 @@ function applySource(source) {
 async function loadPreview(timeValue) {
   if (!state.sourceId) return;
   const time = Number.isFinite(Number(timeValue)) ? Number(timeValue) : 0;
-  els.refreshPreview.disabled = true;
-  setStatus(els.importStatus, "Loading preview...");
+  const sourceId = state.sourceId;
+
+  if (state.previewLoading) {
+    state.pendingPreviewTime = time;
+    state.pendingPreviewSourceId = sourceId;
+    state.previewRequestId += 1;
+    els.previewStatus.textContent = "Updating preview...";
+    return;
+  }
+
+  const requestId = state.previewRequestId + 1;
+  state.previewRequestId = requestId;
+  setPreviewLoading(true, "Updating preview...");
+
   try {
     const data = await fetchJson("/api/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source_id: state.sourceId, time }),
+      body: JSON.stringify({ source_id: sourceId, time }),
     });
+    if (requestId !== state.previewRequestId || sourceId !== state.sourceId) return;
     els.previewImage.src = `${data.preview_url}?v=${Date.now()}`;
-    setStatus(els.importStatus, "");
+    state.previewTime = time;
+    if (currentStartTime() === state.previewTime) {
+      clearPreviewStatus();
+    } else {
+      setPreviewNotice(`Preview is still showing ${formatSeconds(state.previewTime)}`, "stale");
+    }
   } catch (error) {
-    setStatus(els.importStatus, error.message, "error");
+    if (requestId !== state.previewRequestId || sourceId !== state.sourceId) return;
+    setPreviewLoading(false, error.message, "error");
   } finally {
-    els.refreshPreview.disabled = false;
+    if (sourceId !== state.sourceId) return;
+    if (state.pendingPreviewTime !== null && state.pendingPreviewSourceId === state.sourceId) {
+      const nextTime = state.pendingPreviewTime;
+      state.pendingPreviewTime = null;
+      state.pendingPreviewSourceId = null;
+      state.previewLoading = false;
+      loadPreview(nextTime);
+    } else if (requestId === state.previewRequestId) {
+      state.previewLoading = false;
+    }
   }
 }
 
@@ -233,18 +345,23 @@ async function pollJob(jobId) {
 
 els.importForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  setStatus(els.importStatus, "Importing...");
+  if (state.importing) return;
+
   const formData = new FormData(els.importForm);
+  setImportLoading(true);
+  setStatus(els.importStatus, "Reading video info...");
   try {
     const source = await fetchJson("/api/import", {
       method: "POST",
       body: formData,
     });
     applySource(source);
-    setStatus(els.importStatus, "Imported.", "success");
+    setStatus(els.importStatus, "Video imported.", "success");
     await loadStartPreview();
   } catch (error) {
     setStatus(els.importStatus, error.message, "error");
+  } finally {
+    setImportLoading(false);
   }
 });
 
@@ -253,7 +370,7 @@ els.refreshPreview.addEventListener("click", () => {
 });
 
 els.startInput.addEventListener("change", () => {
-  loadStartPreview();
+  markPreviewStale();
 });
 
 els.youtubeUrl.addEventListener("input", () => {

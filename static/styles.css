@@ -220,6 +220,10 @@ button:disabled {
   opacity: 0.58;
 }
 
+.is-loading {
+  cursor: progress;
+}
+
 .status-line {
   min-height: 20px;
   margin: 10px 0 0;
@@ -250,6 +254,12 @@ button:disabled {
   height: 100%;
   object-fit: contain;
   display: block;
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+
+.preview-frame.is-loading img {
+  opacity: 0.54;
+  filter: saturate(0.86);
 }
 
 .crop-overlay,
@@ -263,6 +273,65 @@ button:disabled {
 
 .crop-overlay {
   inset: 0;
+}
+
+.preview-frame.is-loading .crop-overlay {
+  opacity: 0.64;
+}
+
+.preview-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(23, 26, 31, 0.34);
+  color: #fffaf1;
+  font-size: 14px;
+  font-weight: 650;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.preview-loading-overlay.is-error {
+  background: rgba(31, 36, 44, 0.78);
+  color: #ffd6d1;
+}
+
+.preview-loading-overlay.is-stale {
+  inset: auto 12px 12px auto;
+  max-width: calc(100% - 24px);
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 250, 241, 0.18);
+  border-radius: 6px;
+  background: rgba(31, 36, 44, 0.82);
+  color: #fffaf1;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.preview-loading-overlay.is-error .spinner,
+.preview-loading-overlay.is-stale .spinner {
+  display: none;
+}
+
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 250, 241, 0.42);
+  border-top-color: #fffaf1;
+  border-radius: 50%;
+  animation: spin 760ms linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .shade {
