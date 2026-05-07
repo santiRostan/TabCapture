@@ -42,8 +42,6 @@ const els = {
   diffThreshold: document.getElementById("diffThreshold"),
   bandHalfWidth: document.getElementById("bandHalfWidth"),
   compareWindow: document.getElementById("compareWindow"),
-  debugDiffs: document.getElementById("debugDiffs"),
-  saveCleaned: document.getElementById("saveCleaned"),
   generateButton: document.getElementById("generateButton"),
   extractStatus: document.getElementById("extractStatus"),
   resultPanel: document.getElementById("resultPanel"),
@@ -189,12 +187,30 @@ function endDrag() {
   state.activeHandle = null;
 }
 
+function resetExtractionState() {
+  if (state.pollTimer) {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+
+  els.generateButton.disabled = false;
+  els.resultPanel.classList.add("hidden");
+  els.jobPanel.classList.add("hidden");
+  els.jobPhase.textContent = "Queued";
+  els.statChecked.textContent = "0";
+  els.statSkipped.textContent = "0";
+  els.statKept.textContent = "0";
+  els.logBox.textContent = "";
+  setStatus(els.extractStatus, "");
+}
+
 function applySource(source) {
   state.previewRequestId += 1;
   state.previewTime = null;
   state.pendingPreviewTime = null;
   state.pendingPreviewSourceId = null;
   clearPreviewStatus();
+  resetExtractionState();
 
   state.sourceId = source.id;
   state.duration = source.duration || null;
@@ -210,8 +226,11 @@ function applySource(source) {
     els.endInput.max = String(max);
     els.startInput.value = String(midpoint);
   } else {
+    els.startInput.removeAttribute("max");
+    els.endInput.removeAttribute("max");
     els.startInput.value = "0";
   }
+  els.endInput.value = "";
 
   updateCropUi();
 }
@@ -287,8 +306,6 @@ function buildExtractPayload() {
     diff_threshold: numericValue(els.diffThreshold, 0.01),
     band_half_width: numericValue(els.bandHalfWidth, 90),
     compare_window: numericValue(els.compareWindow, 1),
-    debug_diffs: els.debugDiffs.checked,
-    save_cleaned: els.saveCleaned.checked,
   };
 }
 
