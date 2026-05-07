@@ -15,10 +15,19 @@ Create a virtual environment and install the dependencies:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install pillow opencv-python numpy yt-dlp
+.venv/bin/python -m pip install pillow opencv-python numpy yt-dlp flask
 ```
 
 ## Usage
+
+Local web UI:
+
+```bash
+.venv/bin/python app.py
+```
+
+Then open `http://127.0.0.1:5000`, import a YouTube URL or local video, drag the crop handles over the tab area, edit the title/channel if needed, and generate the PDF.
+If port 5000 is busy, run `PORT=5001 .venv/bin/python app.py`.
 
 From a YouTube URL:
 
@@ -37,6 +46,8 @@ Useful options:
 ```bash
 --start 195                  # start processing at a specific second
 --end 300                    # stop processing at a specific second
+--crop-y-start 0.50          # start the vertical crop lower in the video
+--crop-y-end 1.00            # end the vertical crop at the bottom
 --title "Love Story"         # override the PDF cover title
 --channel "Sky Guitar"       # override the PDF cover credit
 --keep-images                # keep extracted tab screenshots
@@ -45,6 +56,7 @@ Useful options:
 ```
 
 When the source is a YouTube URL, the PDF cover automatically uses the cleaned video title and channel name when available.
+If `--start` or `--end` is used with a YouTube URL, only that video fragment is downloaded before extraction.
 
 The current defaults are tuned for SkyGuitar-style videos:
 

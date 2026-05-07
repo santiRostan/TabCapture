@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TabCapture</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>TabCapture</h1>
+          <p>SkyGuitar PDF extractor</p>
+        </div>
+        <a class="ghost-link" href="/api/jobs" aria-hidden="true" tabindex="-1"></a>
+      </header>
+
+      <section class="panel import-panel" id="importPanel">
+        <form id="importForm" class="import-grid">
+          <label class="field field-wide">
+            <span>YouTube URL</span>
+            <input id="youtubeUrl" name="url" type="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off">
+          </label>
+          <label class="field file-field">
+            <span>Local video</span>
+            <input id="localFile" name="file" type="file" accept="video/mp4,video/quicktime,video/webm,video/x-matroska">
+          </label>
+          <button class="primary-button" type="submit">Import</button>
+        </form>
+        <p class="status-line" id="importStatus"></p>
+      </section>
+
+      <section class="workspace hidden" id="workspace">
+        <section class="panel preview-panel">
+          <div class="preview-toolbar">
+            <label class="field compact">
+              <span>Preview second</span>
+              <input id="previewTime" type="number" min="0" step="1" value="0">
+            </label>
+            <button class="secondary-button" id="refreshPreview" type="button">Refresh frame</button>
+            <div class="crop-readout">
+              <span id="cropReadout">Crop 0% - 46%</span>
+            </div>
+          </div>
+
+          <div class="preview-frame" id="previewFrame">
+            <img id="previewImage" alt="Video preview">
+            <div class="crop-overlay" id="cropOverlay">
+              <div class="shade shade-top" id="shadeTop"></div>
+              <div class="shade shade-bottom" id="shadeBottom"></div>
+              <div class="crop-window" id="cropWindow"></div>
+              <button class="crop-handle crop-top" id="cropTop" type="button" aria-label="Move crop top"></button>
+              <button class="crop-handle crop-bottom" id="cropBottom" type="button" aria-label="Move crop bottom"></button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel controls-panel">
+          <div class="form-grid">
+            <label class="field">
+              <span>Title</span>
+              <input id="titleInput" type="text" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>Channel</span>
+              <input id="channelInput" type="text" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>Start</span>
+              <input id="startInput" type="number" min="0" step="1" value="0">
+            </label>
+            <label class="field">
+              <span>End</span>
+              <input id="endInput" type="number" min="0" step="1" placeholder="End">
+            </label>
+            <label class="field field-wide">
+              <span>PDF filename</span>
+              <input id="outputInput" type="text" value="tablatura.pdf" autocomplete="off">
+            </label>
+          </div>
+
+          <details class="advanced">
+            <summary>Advanced settings</summary>
+            <div class="form-grid advanced-grid">
+              <label class="field">
+                <span>Sample every</span>
+                <input id="sampleEvery" type="number" min="0.5" step="0.5" value="2">
+              </label>
+              <label class="field">
+                <span>Diff threshold</span>
+                <input id="diffThreshold" type="number" min="0" max="1" step="0.001" value="0.010">
+              </label>
+              <label class="field">
+                <span>Band half width</span>
+                <input id="bandHalfWidth" type="number" min="1" step="1" value="90">
+              </label>
+              <label class="field">
+                <span>Compare window</span>
+                <input id="compareWindow" type="number" min="1" step="1" value="1">
+              </label>
+              <label class="toggle">
+                <input id="debugDiffs" type="checkbox">
+                <span>Debug diffs</span>
+              </label>
+              <label class="toggle">
+                <input id="saveCleaned" type="checkbox">
+                <span>Mask playhead in PDF</span>
+              </label>
+            </div>
+          </details>
+
+          <div class="action-row">
+            <button class="primary-button" id="generateButton" type="button">Generate PDF</button>
+            <span class="status-line" id="extractStatus"></span>
+          </div>
+
+          <section class="job-panel hidden" id="jobPanel">
+            <div class="job-header">
+              <strong id="jobPhase">Queued</strong>
+              <a id="pdfLink" class="secondary-button hidden" href="#" target="_blank" rel="noreferrer">Open PDF</a>
+            </div>
+            <div class="stats-grid" id="statsGrid">
+              <span>Checked <strong id="statChecked">0</strong></span>
+              <span>Skipped <strong id="statSkipped">0</strong></span>
+              <span>Kept <strong id="statKept">0</strong></span>
+            </div>
+            <pre class="log-box" id="logBox"></pre>
+          </section>
+        </section>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

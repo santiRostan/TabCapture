@@ -4,7 +4,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -31,6 +31,47 @@ class VideoMetadata:
     display_title: Optional[str] = None
     channel: Optional[str] = None
     source_url: Optional[str] = None
+
+
+@dataclass
+class ExtractionOptions:
+    sample_every_sec: float = 2.0
+    crop_y_start_ratio: float = 0.0
+    crop_y_end_ratio: float = 0.46
+    hash_threshold: int = 16
+    hash_size: int = 12
+    diff_threshold: float = 0.010
+    compare_window: int = 1
+    debug_diffs: bool = False
+    start_sec: float = 0.0
+    end_sec: Optional[float] = None
+    save_cleaned: bool = False
+    band_half_width: int = 90
+    min_band_pixels: int = 20
+    target_tolerance: int = 48
+
+
+@dataclass
+class ExtractionStats:
+    duration: float = 0.0
+    start_sec: float = 0.0
+    end_sec: float = 0.0
+    frames_checked: int = 0
+    duplicates_skipped: int = 0
+    captures_kept: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "duration": self.duration,
+            "start_sec": self.start_sec,
+            "end_sec": self.end_sec,
+            "frames_checked": self.frames_checked,
+            "duplicates_skipped": self.duplicates_skipped,
+            "captures_kept": self.captures_kept,
+        }
+
+
+ProgressCallback = Callable[[str, ExtractionStats], None]
 
 
 def clean_video_title(raw_title: Optional[str]) -> Optional[str]:
@@ -81,6 +122,40 @@ def build_video_metadata(
     )
 
 
+def youtube_ydl_base_opts(quiet: bool = False) -> Dict[str, Any]:
+    return {
+        "quiet": quiet,
+        "noplaylist": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "web_embedded", "default"],
+                "formats": ["missing_pot"],
+            }
+        },
+    }
+
+
+def metadata_from_yt_info(info: Dict[str, Any], fallback_url: str) -> VideoMetadata:
+    return build_video_metadata(
+        raw_title=info.get("title"),
+        channel=info.get("channel") or info.get("uploader"),
+        source_url=info.get("webpage_url") or fallback_url,
+    )
+
+
+def probe_youtube_metadata(url: str) -> Tuple[VideoMetadata, Optional[float]]:
+    if YoutubeDL is None:
+        raise RuntimeError("yt-dlp no está instalado. Ejecutá: pip install yt-dlp")
+
+    ydl_opts = youtube_ydl_base_opts(quiet=True)
+    ydl_opts["skip_download"] = True
+
+    with YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+
+    return metadata_from_yt_info(info, url), info.get("duration")
+
+
 def download_video(
     url: str,
     output_dir: Path,
@@ -102,7 +177,8 @@ def download_video(
     requested_end = end_sec
     should_download_range = requested_start > 0 or requested_end is not None
 
-    ydl_opts = {
+    ydl_opts = youtube_ydl_base_opts(quiet=False)
+    ydl_opts.update({
         "format": (
             "bestvideo[height<=1080][protocol=m3u8_native][vcodec^=avc1]/"
             "bestvideo[height<=1080][protocol=m3u8][vcodec^=avc1]/"
@@ -113,15 +189,7 @@ def download_video(
             "best[ext=mp4]/best"
         ),
         "outtmpl": output_template,
-        "quiet": False,
-        "noplaylist": True,
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["android", "ios", "web_embedded", "default"],
-                "formats": ["missing_pot"],
-            }
-        },
-    }
+    })
 
     if should_download_range:
         if download_range_func is None:
@@ -149,11 +217,7 @@ def download_video(
         raise FileNotFoundError("No se encontró el video descargado.")
 
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    metadata = build_video_metadata(
-        raw_title=info.get("title"),
-        channel=info.get("channel") or info.get("uploader"),
-        source_url=info.get("webpage_url") or url,
-    )
+    metadata = metadata_from_yt_info(info, url)
 
     downloaded_start_sec = requested_start if should_download_range else 0.0
     return candidates[0], metadata, downloaded_start_sec
@@ -518,12 +582,77 @@ def mask_playhead_in_original(
     return Image.fromarray(arr)
 
 
+def validate_crop_ratios(crop_y_start_ratio: float, crop_y_end_ratio: float) -> None:
+    if not 0.0 <= crop_y_start_ratio < crop_y_end_ratio <= 1.0:
+        raise ValueError(
+            "El recorte debe cumplir 0 <= crop_y_start < crop_y_end <= 1."
+        )
+    if crop_y_end_ratio - crop_y_start_ratio < 0.05:
+        raise ValueError("El recorte vertical debe cubrir al menos 5% del video.")
+
+
+def crop_frame_rgb(
+    frame_rgb: np.ndarray,
+    crop_y_start_ratio: float,
+    crop_y_end_ratio: float,
+) -> np.ndarray:
+    validate_crop_ratios(crop_y_start_ratio, crop_y_end_ratio)
+    h, _w, _ = frame_rgb.shape
+    y1 = int(round(h * crop_y_start_ratio))
+    y2 = int(round(h * crop_y_end_ratio))
+    y1 = max(0, min(h - 1, y1))
+    y2 = max(y1 + 1, min(h, y2))
+    return frame_rgb[y1:y2, :, :]
+
+
+def save_video_frame(
+    video_path: Path,
+    output_path: Path,
+    time_sec: float = 0.0,
+    max_width: int = 1280,
+) -> Path:
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"No se pudo abrir el video: {video_path}")
+
+    cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, time_sec) * 1000)
+    ok, frame = cap.read()
+    cap.release()
+
+    if not ok:
+        raise RuntimeError(f"No se pudo leer un frame en t={time_sec:.2f}s")
+
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    image = Image.fromarray(frame_rgb)
+
+    if image.width > max_width:
+        ratio = max_width / image.width
+        image = image.resize((max_width, int(image.height * ratio)), RESAMPLE)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    image.convert("RGB").save(output_path, quality=90)
+    return output_path
+
+
+def get_video_duration(video_path: Path) -> float:
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"No se pudo abrir el video: {video_path}")
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+    return frame_count / fps if fps > 0 else 0.0
+
+
 def extract_unique_crops(
     video_path: Path,
     crops_dir: Path,
     comparison_dir: Optional[Path] = None,
     sample_every_sec: float = 2.0,
-    crop_top_ratio: float = 0.46,
+    crop_top_ratio: Optional[float] = 0.46,
+    crop_y_start_ratio: Optional[float] = None,
+    crop_y_end_ratio: Optional[float] = None,
     hash_threshold: int = 16,
     hash_size: int = 12,
     diff_threshold: float = 0.010,
@@ -535,12 +664,19 @@ def extract_unique_crops(
     band_half_width: int = 90,
     min_band_pixels: int = 20,
     target_tolerance: int = 48,
-):
+    progress_callback: Optional[ProgressCallback] = None,
+) -> ExtractionStats:
     """
     Extrae capturas cada X segundos, recorta la parte superior,
     elimina duplicados ignorando la franja vertical azul/verde móvil,
     y guarda las imágenes finales.
     """
+    if crop_y_start_ratio is None:
+        crop_y_start_ratio = 0.0
+    if crop_y_end_ratio is None:
+        crop_y_end_ratio = crop_top_ratio if crop_top_ratio is not None else 0.46
+    validate_crop_ratios(crop_y_start_ratio, crop_y_end_ratio)
+
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise RuntimeError(f"No se pudo abrir el video: {video_path}")
@@ -558,9 +694,11 @@ def extract_unique_crops(
         comparison_dir.mkdir(parents=True, exist_ok=True)
 
     current_time = start_sec
-    kept = 0
-    checked = 0
-    skipped_duplicates = 0
+    stats = ExtractionStats(
+        duration=duration,
+        start_sec=start_sec,
+        end_sec=end_sec,
+    )
     recent_kept: List[ComparisonFrame] = []
     compare_window = max(1, compare_window)
 
@@ -571,6 +709,12 @@ def extract_unique_crops(
         f"diff_threshold={diff_threshold:.4f}, "
         f"compare_window={compare_window}, band_half_width={band_half_width}"
     )
+    print(
+        f"crop_y_start={crop_y_start_ratio:.3f}, "
+        f"crop_y_end={crop_y_end_ratio:.3f}"
+    )
+    if progress_callback is not None:
+        progress_callback("started", stats)
 
     while current_time <= end_sec:
         cap.set(cv2.CAP_PROP_POS_MSEC, current_time * 1000)
@@ -578,13 +722,10 @@ def extract_unique_crops(
         if not ok:
             break
 
-        checked += 1
+        stats.frames_checked += 1
 
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        h, w, _ = frame_rgb.shape
-
-        crop_h = int(h * crop_top_ratio)
-        cropped = frame_rgb[:crop_h, :, :]
+        cropped = crop_frame_rgb(frame_rgb, crop_y_start_ratio, crop_y_end_ratio)
 
         original_img = Image.fromarray(cropped)
 
@@ -627,20 +768,24 @@ def extract_unique_crops(
                 break
 
         if is_duplicate:
-            skipped_duplicates += 1
+            stats.duplicates_skipped += 1
             if comparison_dir is not None and debug_diffs:
                 save_debug_images(
                     comparison_dir,
-                    checked,
+                    stats.frames_checked,
                     current_comparison,
                     decision=f"duplicate_diff_{best_diff:.4f}",
                     masked_current=best_masked_current,
                     diff_image=best_diff_image,
                 )
+            if progress_callback is not None:
+                progress_callback("frame", stats)
             current_time += sample_every_sec
             continue
 
-        output_path = crops_dir / f"crop_{kept:04d}_t{int(current_time):05d}.png"
+        output_path = crops_dir / (
+            f"crop_{stats.captures_kept:04d}_t{int(current_time):05d}.png"
+        )
 
         if save_cleaned:
             cleaned_img = mask_playhead_in_original(
@@ -655,7 +800,7 @@ def extract_unique_crops(
         if comparison_dir is not None:
             save_debug_images(
                 comparison_dir,
-                checked,
+                stats.frames_checked,
                 current_comparison,
                 decision=(
                     f"kept_diff_{best_diff:.4f}"
@@ -666,7 +811,7 @@ def extract_unique_crops(
                 diff_image=best_diff_image if debug_diffs else None,
             )
 
-        kept += 1
+        stats.captures_kept += 1
         recent_kept.append(current_comparison)
 
         band_info = "sin banda detectada"
@@ -681,19 +826,23 @@ def extract_unique_crops(
             diff_info = f"diff={best_diff:.4f}"
 
         print(
-            f"[{kept:03d}] guardada t={current_time:.2f}s | "
+            f"[{stats.captures_kept:03d}] guardada t={current_time:.2f}s | "
             f"{diff_info} | {band_info}"
         )
+        if progress_callback is not None:
+            progress_callback("frame", stats)
 
         current_time += sample_every_sec
 
     cap.release()
 
-    print(f"Frames chequeados: {checked}")
-    print(f"Duplicados saltados: {skipped_duplicates}")
-    print(f"Capturas finales: {kept}")
+    print(f"Frames chequeados: {stats.frames_checked}")
+    print(f"Duplicados saltados: {stats.duplicates_skipped}")
+    print(f"Capturas finales: {stats.captures_kept}")
+    if progress_callback is not None:
+        progress_callback("finished", stats)
 
-    return kept
+    return stats
 
 
 def load_font(size: int):
@@ -907,7 +1056,21 @@ def main():
         "--crop-top-ratio",
         type=float,
         default=0.46,
-        help="Porcentaje superior a recortar (default: 0.46)",
+        help="Compatibilidad: porcentaje superior a recortar (default: 0.46)",
+    )
+
+    parser.add_argument(
+        "--crop-y-start",
+        type=float,
+        default=None,
+        help="Inicio vertical del recorte, de 0.0 a 1.0. Útil para tabs abajo.",
+    )
+
+    parser.add_argument(
+        "--crop-y-end",
+        type=float,
+        default=None,
+        help="Final vertical del recorte, de 0.0 a 1.0. Útil para tabs abajo.",
     )
 
     parser.add_argument(
@@ -1003,6 +1166,16 @@ def main():
         parser.error("--start no puede ser negativo")
     if args.end is not None and args.end <= args.start:
         parser.error("--end debe ser mayor que --start")
+    if args.crop_y_start is not None or args.crop_y_end is not None:
+        crop_y_start = args.crop_y_start if args.crop_y_start is not None else 0.0
+        crop_y_end = args.crop_y_end if args.crop_y_end is not None else 1.0
+    else:
+        crop_y_start = 0.0
+        crop_y_end = args.crop_top_ratio
+    try:
+        validate_crop_ratios(crop_y_start, crop_y_end)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     source = args.source
     output_pdf = Path(args.output).resolve()
@@ -1054,12 +1227,10 @@ def main():
                 "procesando desde 0.00s dentro del archivo local."
             )
 
-        kept = extract_unique_crops(
-            video_path=video_path,
-            crops_dir=crops_dir,
-            comparison_dir=comparison_dir,
+        options = ExtractionOptions(
             sample_every_sec=args.sample_every,
-            crop_top_ratio=args.crop_top_ratio,
+            crop_y_start_ratio=crop_y_start,
+            crop_y_end_ratio=crop_y_end,
             hash_threshold=args.hash_threshold,
             hash_size=args.hash_size,
             diff_threshold=args.diff_threshold,
@@ -1073,7 +1244,27 @@ def main():
             target_tolerance=args.target_tolerance,
         )
 
-        if kept == 0:
+        stats = extract_unique_crops(
+            video_path=video_path,
+            crops_dir=crops_dir,
+            comparison_dir=comparison_dir,
+            sample_every_sec=options.sample_every_sec,
+            crop_y_start_ratio=options.crop_y_start_ratio,
+            crop_y_end_ratio=options.crop_y_end_ratio,
+            hash_threshold=options.hash_threshold,
+            hash_size=options.hash_size,
+            diff_threshold=options.diff_threshold,
+            compare_window=options.compare_window,
+            debug_diffs=options.debug_diffs,
+            start_sec=options.start_sec,
+            end_sec=options.end_sec,
+            save_cleaned=options.save_cleaned,
+            band_half_width=options.band_half_width,
+            min_band_pixels=options.min_band_pixels,
+            target_tolerance=options.target_tolerance,
+        )
+
+        if stats.captures_kept == 0:
             raise RuntimeError("No se extrajo ninguna captura útil.")
 
         print("Armando PDF...")
