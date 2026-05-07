@@ -1,0 +1,19 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Generated outputs
+*.pdf
+*.log
+capturas_tablatura/
+debug_comparacion_tablatura/
+video_cache/
+
+# Local/editor files
+.idea/
+.vscode/
