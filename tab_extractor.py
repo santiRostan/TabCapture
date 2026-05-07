@@ -12,8 +12,10 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 
 try:
     from yt_dlp import YoutubeDL
+    from yt_dlp.utils import download_range_func
 except ImportError:
     YoutubeDL = None
+    download_range_func = None
 
 
 # Compatibilidad con distintas versiones de Pillow
@@ -79,7 +81,12 @@ def build_video_metadata(
     )
 
 
-def download_video(url: str, output_dir: Path) -> Tuple[Path, VideoMetadata]:
+def download_video(
+    url: str,
+    output_dir: Path,
+    start_sec: float = 0.0,
+    end_sec: Optional[float] = None,
+) -> Tuple[Path, VideoMetadata, float]:
     """
     Descarga un video desde YouTube usando yt-dlp.
 
@@ -91,6 +98,9 @@ def download_video(url: str, output_dir: Path) -> Tuple[Path, VideoMetadata]:
         raise RuntimeError("yt-dlp no está instalado. Ejecutá: pip install yt-dlp")
 
     output_template = str(output_dir / "video.%(ext)s")
+    requested_start = max(0.0, start_sec)
+    requested_end = end_sec
+    should_download_range = requested_start > 0 or requested_end is not None
 
     ydl_opts = {
         "format": (
@@ -113,6 +123,21 @@ def download_video(url: str, output_dir: Path) -> Tuple[Path, VideoMetadata]:
         },
     }
 
+    if should_download_range:
+        if download_range_func is None:
+            raise RuntimeError("No se pudo cargar download_range_func desde yt-dlp.")
+        if shutil.which("ffmpeg") is None:
+            raise RuntimeError(
+                "Para descargar solo un fragmento hace falta ffmpeg. "
+                "Instalalo o ejecutá sin --start/--end para descargar el video completo."
+            )
+
+        ydl_opts["download_ranges"] = download_range_func(
+            None,
+            [(requested_start, requested_end if requested_end is not None else float("inf"))],
+        )
+        ydl_opts["force_keyframes_at_cuts"] = False
+
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
 
@@ -130,7 +155,8 @@ def download_video(url: str, output_dir: Path) -> Tuple[Path, VideoMetadata]:
         source_url=info.get("webpage_url") or url,
     )
 
-    return candidates[0], metadata
+    downloaded_start_sec = requested_start if should_download_range else 0.0
+    return candidates[0], metadata, downloaded_start_sec
 
 
 def dhash(image: Image.Image, hash_size: int = 12) -> int:
@@ -973,6 +999,11 @@ def main():
 
     args = parser.parse_args()
 
+    if args.start < 0:
+        parser.error("--start no puede ser negativo")
+    if args.end is not None and args.end <= args.start:
+        parser.error("--end debe ser mayor que --start")
+
     source = args.source
     output_pdf = Path(args.output).resolve()
 
@@ -983,7 +1014,12 @@ def main():
 
         if source.startswith("http://") or source.startswith("https://"):
             print("Descargando video...")
-            video_path, metadata = download_video(source, tmp_path)
+            video_path, metadata, downloaded_start_sec = download_video(
+                source,
+                tmp_path,
+                start_sec=args.start,
+                end_sec=args.end,
+            )
             metadata = build_video_metadata(
                 raw_title=metadata.raw_title,
                 channel=metadata.channel,
@@ -995,6 +1031,7 @@ def main():
             video_path = Path(source).resolve()
             if not video_path.exists():
                 raise FileNotFoundError(f"No existe el archivo: {video_path}")
+            downloaded_start_sec = 0.0
             metadata = build_video_metadata(
                 raw_title=args.title,
                 channel=args.channel,
@@ -1009,6 +1046,14 @@ def main():
         if metadata.channel:
             print(f"Crédito PDF: {metadata.channel}")
 
+        extract_start_sec = max(0.0, args.start - downloaded_start_sec)
+        extract_end_sec = args.end - downloaded_start_sec if args.end is not None else None
+        if downloaded_start_sec > 0:
+            print(
+                f"Fragmento descargado desde {downloaded_start_sec:.2f}s; "
+                "procesando desde 0.00s dentro del archivo local."
+            )
+
         kept = extract_unique_crops(
             video_path=video_path,
             crops_dir=crops_dir,
@@ -1020,8 +1065,8 @@ def main():
             diff_threshold=args.diff_threshold,
             compare_window=args.compare_window,
             debug_diffs=args.debug_diffs,
-            start_sec=args.start,
-            end_sec=args.end,
+            start_sec=extract_start_sec,
+            end_sec=extract_end_sec,
             save_cleaned=args.save_cleaned,
             band_half_width=args.band_half_width,
             min_band_pixels=args.min_band_pixels,
