@@ -62,3 +62,5 @@ The current defaults are tuned for SkyGuitar-style videos:
   --start 195 \
   --output tablatura.pdf
 ```
+
+See the resulting pdf in this repo at `example.pdf`
