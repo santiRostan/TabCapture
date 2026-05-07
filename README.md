@@ -2,7 +2,7 @@
 
 A small Python tool for extracting guitar tab screenshots from SkyGuitar YouTube videos and turning them into a clean PDF.
 
-Suggested README screenshot: add a before/after image at the top showing a SkyGuitar video frame with the moving blue playhead next to the generated PDF page. That immediately explains the problem this project solves.
+![SkyGuitar PDF Extractor cover](cover.png)
 
 ## How It Works
 
@@ -37,10 +37,14 @@ Useful options:
 ```bash
 --start 195                  # start processing at a specific second
 --end 300                    # stop processing at a specific second
+--title "Love Story"         # override the PDF cover title
+--channel "Sky Guitar"       # override the PDF cover credit
 --keep-images                # keep extracted tab screenshots
 --keep-comparison-images     # keep debug comparison images
 --debug-diffs                # save visual diff images for duplicate decisions
 ```
+
+When the source is a YouTube URL, the PDF cover automatically uses the cleaned video title and channel name when available.
 
 The current defaults are tuned for SkyGuitar-style videos:
 

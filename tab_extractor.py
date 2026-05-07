@@ -1,5 +1,6 @@
 import shutil
 import argparse
+import re
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,7 +8,7 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from PIL import Image, ImageOps, ImageStat
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 
 try:
     from yt_dlp import YoutubeDL
@@ -22,7 +23,63 @@ else:
     RESAMPLE = Image.LANCZOS
 
 
-def download_video(url: str, output_dir: Path) -> Path:
+@dataclass
+class VideoMetadata:
+    raw_title: Optional[str] = None
+    display_title: Optional[str] = None
+    channel: Optional[str] = None
+    source_url: Optional[str] = None
+
+
+def clean_video_title(raw_title: Optional[str]) -> Optional[str]:
+    if not raw_title:
+        return None
+
+    original = raw_title.strip()
+    title = original
+
+    title = re.sub(r"^\([^)]{1,100}\)\s*", "", title).strip()
+
+    parts = re.split(r"\s+-\s+", title)
+    if len(parts) > 1:
+        suffix = " - ".join(parts[1:]).lower()
+        descriptor_keywords = (
+            "tab",
+            "tabs",
+            "lesson",
+            "tutorial",
+            "guitar",
+            "cover",
+            "sheet",
+            "chord",
+        )
+        if any(keyword in suffix for keyword in descriptor_keywords):
+            title = parts[0].strip()
+
+    return title or original or None
+
+
+def build_video_metadata(
+    raw_title: Optional[str] = None,
+    channel: Optional[str] = None,
+    source_url: Optional[str] = None,
+    title_override: Optional[str] = None,
+    channel_override: Optional[str] = None,
+) -> VideoMetadata:
+    title_override = title_override.strip() if title_override else None
+    channel_override = channel_override.strip() if channel_override else None
+    raw_title = raw_title.strip() if raw_title else None
+    channel = channel.strip() if channel else None
+
+    return VideoMetadata(
+        raw_title=raw_title,
+        display_title=title_override or clean_video_title(raw_title),
+        channel=channel_override or channel,
+        source_url=source_url,
+    )
+
+
+def download_video(url: str, output_dir: Path) -> Tuple[Path, VideoMetadata]:
     """
     Descarga un video desde YouTube usando yt-dlp.
 
@@ -37,6 +94,10 @@ def download_video(url: str, output_dir: Path) -> Path:
 
     ydl_opts = {
         "format": (
+            "bestvideo[height<=1080][protocol=m3u8_native][vcodec^=avc1]/"
+            "bestvideo[height<=1080][protocol=m3u8][vcodec^=avc1]/"
+            "bestvideo[height<=1080][protocol=m3u8_native]/"
+            "bestvideo[height<=1080][protocol=m3u8]/"
             "bestvideo[height<=1080][vcodec^=avc1]/"
             "bestvideo[height<=1080]/"
             "best[ext=mp4]/best"
@@ -53,7 +114,7 @@ def download_video(url: str, output_dir: Path) -> Path:
     }
 
     with YoutubeDL(ydl_opts) as ydl:
-        ydl.extract_info(url, download=True)
+        info = ydl.extract_info(url, download=True)
 
     candidates = []
     for ext in ("mp4", "mkv", "webm", "mov"):
@@ -63,7 +124,13 @@ def download_video(url: str, output_dir: Path) -> Path:
         raise FileNotFoundError("No se encontró el video descargado.")
 
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return candidates[0]
+    metadata = build_video_metadata(
+        raw_title=info.get("title"),
+        channel=info.get("channel") or info.get("uploader"),
+        source_url=info.get("webpage_url") or url,
+    )
+
+    return candidates[0], metadata
 
 
 def dhash(image: Image.Image, hash_size: int = 12) -> int:
@@ -603,9 +670,122 @@ def extract_unique_crops(
     return kept
 
 
+def load_font(size: int):
+    font_candidates = [
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/System/Library/Fonts/Supplemental/Helvetica.ttf",
+        "/Library/Fonts/Arial.ttf",
+        "DejaVuSans.ttf",
+    ]
+
+    for font_path in font_candidates:
+        try:
+            return ImageFont.truetype(font_path, size)
+        except OSError:
+            continue
+
+    return ImageFont.load_default()
+
+
+def text_size(draw: ImageDraw.ImageDraw, text: str, font) -> Tuple[int, int]:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def wrap_text(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    font,
+    max_width: int,
+) -> List[str]:
+    words = text.split()
+    if not words:
+        return []
+
+    lines = []
+    current = words[0]
+
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        candidate_w, _ = text_size(draw, candidate, font)
+        if candidate_w <= max_width:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+
+    lines.append(current)
+    return lines
+
+
+def create_cover_page(
+    metadata: VideoMetadata,
+    page_width: int,
+    page_height: int,
+    bg_color: str = "white",
+) -> Image.Image:
+    page = Image.new("RGB", (page_width, page_height), bg_color)
+    draw = ImageDraw.Draw(page)
+
+    title_font = load_font(78)
+    channel_font = load_font(38)
+    source_font = load_font(24)
+
+    text_color = (24, 24, 24)
+    muted_color = (95, 95, 95)
+    max_text_width = int(page_width * 0.78)
+
+    title = metadata.display_title or "Extracted tablature"
+    title_lines = wrap_text(draw, title, title_font, max_text_width)
+
+    title_line_heights = [text_size(draw, line, title_font)[1] for line in title_lines]
+    title_block_height = sum(title_line_heights) + max(0, len(title_lines) - 1) * 20
+    channel_text = f"From: {metadata.channel}" if metadata.channel else None
+    channel_h = text_size(draw, channel_text, channel_font)[1] if channel_text else 0
+
+    total_block_height = title_block_height + (52 + channel_h if channel_text else 0)
+    current_y = int((page_height - total_block_height) * 0.45)
+
+    for idx, line in enumerate(title_lines):
+        line_w, line_h = text_size(draw, line, title_font)
+        draw.text(
+            ((page_width - line_w) / 2, current_y),
+            line,
+            fill=text_color,
+            font=title_font,
+        )
+        current_y += line_h + (20 if idx < len(title_lines) - 1 else 0)
+
+    if channel_text:
+        current_y += 52
+        channel_w, _ = text_size(draw, channel_text, channel_font)
+        draw.text(
+            ((page_width - channel_w) / 2, current_y),
+            channel_text,
+            fill=muted_color,
+            font=channel_font,
+        )
+
+    if metadata.source_url:
+        source_lines = wrap_text(draw, metadata.source_url, source_font, max_text_width)
+        source_y = page_height - 180
+        for line in source_lines[:2]:
+            line_w, line_h = text_size(draw, line, source_font)
+            draw.text(
+                ((page_width - line_w) / 2, source_y),
+                line,
+                fill=muted_color,
+                font=source_font,
+            )
+            source_y += line_h + 10
+
+    return page
+
+
 def build_pdf_from_images(
     images_dir: Path,
     output_pdf: Path,
+    metadata: Optional[VideoMetadata] = None,
     page_width: int = 1654,   # aprox A4 a ~150 dpi
     page_height: int = 2339,
     margin: int = 40,
@@ -620,6 +800,17 @@ def build_pdf_from_images(
         raise RuntimeError("No hay imágenes para armar el PDF.")
 
     pages = []
+
+    if metadata is not None and (metadata.display_title or metadata.channel):
+        pages.append(
+            create_cover_page(
+                metadata,
+                page_width=page_width,
+                page_height=page_height,
+                bg_color=bg_color,
+            )
+        )
+
     current_y = margin
     page = Image.new("RGB", (page_width, page_height), bg_color)
 
@@ -665,6 +856,18 @@ def main():
         "--output",
         default="tablatura.pdf",
         help="Nombre del PDF de salida (default: tablatura.pdf)",
+    )
+
+    parser.add_argument(
+        "--title",
+        default=None,
+        help="Título a mostrar en la portada del PDF. Sobrescribe el título de YouTube.",
+    )
+
+    parser.add_argument(
+        "--channel",
+        default=None,
+        help="Canal o autor a mostrar en la portada del PDF. Sobrescribe el canal de YouTube.",
     )
 
     parser.add_argument(
@@ -780,13 +983,31 @@ def main():
 
         if source.startswith("http://") or source.startswith("https://"):
             print("Descargando video...")
-            video_path = download_video(source, tmp_path)
+            video_path, metadata = download_video(source, tmp_path)
+            metadata = build_video_metadata(
+                raw_title=metadata.raw_title,
+                channel=metadata.channel,
+                source_url=metadata.source_url,
+                title_override=args.title,
+                channel_override=args.channel,
+            )
         else:
             video_path = Path(source).resolve()
             if not video_path.exists():
                 raise FileNotFoundError(f"No existe el archivo: {video_path}")
+            metadata = build_video_metadata(
+                raw_title=args.title,
+                channel=args.channel,
+                source_url=None,
+                title_override=args.title,
+                channel_override=args.channel,
+            )
 
         print(f"Video fuente: {video_path}")
+        if metadata.display_title:
+            print(f"Título PDF: {metadata.display_title}")
+        if metadata.channel:
+            print(f"Crédito PDF: {metadata.channel}")
 
         kept = extract_unique_crops(
             video_path=video_path,
@@ -811,7 +1032,7 @@ def main():
             raise RuntimeError("No se extrajo ninguna captura útil.")
 
         print("Armando PDF...")
-        build_pdf_from_images(crops_dir, output_pdf)
+        build_pdf_from_images(crops_dir, output_pdf, metadata=metadata)
 
         print(f"PDF generado en: {output_pdf}")
 
