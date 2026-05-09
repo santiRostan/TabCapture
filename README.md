@@ -8,22 +8,37 @@ TabCapture works with YouTube URLs and local video files. It samples frames, let
 
 ## Setup
 
-Create a virtual environment and install the dependencies:
+Create and activate a virtual environment, then install the Python dependencies (can change a bit depending on the OS):
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install pillow opencv-python numpy yt-dlp flask
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-You also need `ffmpeg` available on your system for YouTube range downloads and preview clips.
+### Install ffmpeg
+
+Windows, using WinGet:
+
+```powershell
+winget install --id Gyan.FFmpeg -e
+```
+
+Close and reopen PowerShell after installing so the updated `PATH` is loaded.
+
+macOS, using Homebrew:
+
+```bash
+brew install ffmpeg
+```
 
 ## Standard Usage
 
 Run the local web UI:
 
 ```bash
-.venv/bin/python app.py
+python app.py
 ```
 
 Then open `http://127.0.0.1:5000`.
@@ -35,13 +50,13 @@ The command line script is available for repeatable runs or quick tests.
 From a YouTube URL:
 
 ```bash
-.venv/bin/python tab_extractor.py "https://youtu.be/VIDEO_ID" --output tablatura.pdf
+python tab_extractor.py "https://youtu.be/VIDEO_ID" --output tablatura.pdf
 ```
 
 From a local video file:
 
 ```bash
-.venv/bin/python tab_extractor.py video.mp4 --output tablatura.pdf
+python tab_extractor.py video.mp4 --output tablatura.pdf
 ```
 
 Useful options:
@@ -77,7 +92,7 @@ The defaults are tuned for recent Sky Guitar-like YouTube tab videos with a movi
 Example Sky Guitar run:
 
 ```bash
-.venv/bin/python tab_extractor.py "https://youtu.be/VnDcVqRxSmA?si=jjBvE64DAhj_mvO2" \
+python tab_extractor.py "https://youtu.be/VnDcVqRxSmA?si=jjBvE64DAhj_mvO2" \
   --start 195 \
   --output tablatura.pdf
 ```

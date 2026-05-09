@@ -145,7 +145,7 @@ def metadata_from_yt_info(info: Dict[str, Any], fallback_url: str) -> VideoMetad
 
 def probe_youtube_metadata(url: str) -> Tuple[VideoMetadata, Optional[float]]:
     if YoutubeDL is None:
-        raise RuntimeError("yt-dlp no está instalado. Ejecutá: pip install yt-dlp")
+        raise RuntimeError("yt-dlp no está instalado. Ejecutá: pip install -r requirements.txt")
 
     ydl_opts = youtube_ydl_base_opts(quiet=True)
     ydl_opts["skip_download"] = True
@@ -170,7 +170,7 @@ def download_video(
     Así evitamos depender de ffmpeg para mergear audio + video.
     """
     if YoutubeDL is None:
-        raise RuntimeError("yt-dlp no está instalado. Ejecutá: pip install yt-dlp")
+        raise RuntimeError("yt-dlp no está instalado. Ejecutá: pip install -r requirements.txt")
 
     output_template = str(output_dir / "video.%(ext)s")
     requested_start = max(0.0, start_sec)
