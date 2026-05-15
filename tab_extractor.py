@@ -1,5 +1,6 @@
 import shutil
 import argparse
+import os
 import re
 import tempfile
 from dataclasses import dataclass
@@ -846,10 +847,19 @@ def extract_unique_crops(
 
 
 def load_font(size: int):
+    windows_fonts = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
     font_candidates = [
         "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/System/Library/Fonts/Supplemental/Helvetica.ttf",
         "/Library/Fonts/Arial.ttf",
+        windows_fonts / "arial.ttf",
+        windows_fonts / "segoeui.ttf",
+        windows_fonts / "calibri.ttf",
+        windows_fonts / "verdana.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "arial.ttf",
+        "Arial.ttf",
         "DejaVuSans.ttf",
     ]
 
