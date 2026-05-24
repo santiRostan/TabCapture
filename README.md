@@ -73,7 +73,7 @@ Useful options:
 --debug-diffs                # save visual diff images for duplicate decisions
 ```
 
-When the source is a YouTube URL, the PDF cover automatically uses the cleaned video title and channel name when available. If `--start` or `--end` is used with a YouTube URL, only that video fragment is downloaded before extraction.
+When the source is a YouTube URL, the PDF cover automatically uses the cleaned video title and channel name when available. Start/end times are applied during local extraction after the video download finishes.
 
 ## Defaults
 

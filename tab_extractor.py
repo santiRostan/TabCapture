@@ -1,4 +1,3 @@
-import shutil
 import argparse
 import os
 import re
@@ -13,10 +12,8 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 
 try:
     from yt_dlp import YoutubeDL
-    from yt_dlp.utils import download_range_func
 except ImportError:
     YoutubeDL = None
-    download_range_func = None
 
 
 # Compatibilidad con distintas versiones de Pillow
@@ -129,11 +126,21 @@ def youtube_ydl_base_opts(quiet: bool = False) -> Dict[str, Any]:
         "noplaylist": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "web_embedded", "default"],
-                "formats": ["missing_pot"],
+                "player_client": ["default"],
             }
         },
     }
+
+
+def youtube_video_format(max_height: int = 1080) -> str:
+    return (
+        f"bestvideo[height<={max_height}][ext=mp4][vcodec^=avc1]/"
+        f"bestvideo[height<={max_height}][vcodec^=avc1]/"
+        f"bestvideo[height<={max_height}]/"
+        f"best[height<={max_height}][ext=mp4]/"
+        f"best[height<={max_height}]/"
+        "best[ext=mp4]/best"
+    )
 
 
 def metadata_from_yt_info(info: Dict[str, Any], fallback_url: str) -> VideoMetadata:
@@ -162,50 +169,29 @@ def download_video(
     output_dir: Path,
     start_sec: float = 0.0,
     end_sec: Optional[float] = None,
+    max_height: int = 1080,
 ) -> Tuple[Path, VideoMetadata, float]:
     """
     Descarga un video desde YouTube usando yt-dlp.
 
     Importante:
-    Como solo necesitamos frames, intentamos bajar video sin audio.
-    Así evitamos depender de ffmpeg para mergear audio + video.
+    Como solo necesitamos frames, bajamos video sin audio. El recorte se hace
+    luego sobre el archivo local porque los range-downloads de YouTube pueden
+    quedarse colgados o devolver 403 en URLs de googlevideo.
     """
     if YoutubeDL is None:
         raise RuntimeError("yt-dlp no está instalado. Ejecutá: pip install -r requirements.txt")
 
     output_template = str(output_dir / "video.%(ext)s")
-    requested_start = max(0.0, start_sec)
-    requested_end = end_sec
-    should_download_range = requested_start > 0 or requested_end is not None
 
     ydl_opts = youtube_ydl_base_opts(quiet=False)
     ydl_opts.update({
-        "format": (
-            "bestvideo[height<=1080][protocol=m3u8_native][vcodec^=avc1]/"
-            "bestvideo[height<=1080][protocol=m3u8][vcodec^=avc1]/"
-            "bestvideo[height<=1080][protocol=m3u8_native]/"
-            "bestvideo[height<=1080][protocol=m3u8]/"
-            "bestvideo[height<=1080][vcodec^=avc1]/"
-            "bestvideo[height<=1080]/"
-            "best[ext=mp4]/best"
-        ),
+        "format": youtube_video_format(max_height=max_height),
         "outtmpl": output_template,
+        "socket_timeout": 30,
+        "retries": 3,
+        "fragment_retries": 3,
     })
-
-    if should_download_range:
-        if download_range_func is None:
-            raise RuntimeError("No se pudo cargar download_range_func desde yt-dlp.")
-        if shutil.which("ffmpeg") is None:
-            raise RuntimeError(
-                "Para descargar solo un fragmento hace falta ffmpeg. "
-                "Instalalo o ejecutá sin --start/--end para descargar el video completo."
-            )
-
-        ydl_opts["download_ranges"] = download_range_func(
-            None,
-            [(requested_start, requested_end if requested_end is not None else float("inf"))],
-        )
-        ydl_opts["force_keyframes_at_cuts"] = False
 
     with YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -220,8 +206,7 @@ def download_video(
     candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
     metadata = metadata_from_yt_info(info, url)
 
-    downloaded_start_sec = requested_start if should_download_range else 0.0
-    return candidates[0], metadata, downloaded_start_sec
+    return candidates[0], metadata, 0.0
 
 
 def dhash(image: Image.Image, hash_size: int = 12) -> int:

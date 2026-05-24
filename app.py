@@ -1,5 +1,4 @@
 import contextlib
-import tempfile
 import threading
 import time
 import uuid
@@ -31,6 +30,7 @@ UPLOADS_DIR = CACHE_DIR / "uploads"
 PREVIEWS_DIR = CACHE_DIR / "previews"
 RUNS_DIR = CACHE_DIR / "runs"
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
+YOUTUBE_PREVIEW_MAX_HEIGHT = 480
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024
@@ -148,6 +148,26 @@ def safe_pdf_name(value: str) -> str:
     return filename
 
 
+def cached_youtube_preview_video(source: Dict[str, Any]) -> Path:
+    preview_dir = PREVIEWS_DIR / source["id"] / "video"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+
+    candidates = []
+    for ext in ALLOWED_VIDEO_EXTENSIONS:
+        candidates.extend(preview_dir.glob(f"video*{ext}"))
+    candidates = [path for path in candidates if path.is_file() and path.stat().st_size > 0]
+    if candidates:
+        candidates.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+        return candidates[0]
+
+    video_path, _metadata, _downloaded_start = download_video(
+        source["url"],
+        preview_dir,
+        max_height=YOUTUBE_PREVIEW_MAX_HEIGHT,
+    )
+    return video_path
+
+
 def run_extraction_job(job_id: str, payload: Dict[str, Any]) -> None:
     log_writer = JobLogWriter(job_id)
     with contextlib.redirect_stdout(log_writer), contextlib.redirect_stderr(log_writer):
@@ -189,7 +209,7 @@ def run_extraction_job(job_id: str, payload: Dict[str, Any]) -> None:
 
             source_metadata = metadata_from_dict(source["metadata"])
             if source["type"] == "youtube":
-                print("Downloading requested YouTube segment...")
+                print("Downloading YouTube video...")
                 video_path, downloaded_metadata, downloaded_start_sec = download_video(
                     source["url"],
                     download_dir,
@@ -338,14 +358,8 @@ def preview_source():
         preview_path = PREVIEWS_DIR / preview_name
 
         if source["type"] == "youtube":
-            with tempfile.TemporaryDirectory(dir=PREVIEWS_DIR) as tmp:
-                video_path, _metadata, _downloaded_start = download_video(
-                    source["url"],
-                    Path(tmp),
-                    start_sec=time_sec,
-                    end_sec=time_sec + 1.0,
-                )
-                save_video_frame(video_path, preview_path, time_sec=0.0)
+            video_path = cached_youtube_preview_video(source)
+            save_video_frame(video_path, preview_path, time_sec=time_sec)
         else:
             save_video_frame(Path(source["path"]), preview_path, time_sec=time_sec)
 
